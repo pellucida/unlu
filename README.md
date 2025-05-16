@@ -16,4 +16,4 @@ If the archive is omitted then standard input is assumed.
 The whole archive is read into memory before extraction or testing so unlu can be used as part of pipeline. No file seeks are used.  Owing to the sixteen bit integers used to specify the offsets in 128 byte sectors and file size also in sectors the largest possible lbr archive is necessarily less than 16 Mb.
 
 ## See also 
-[ Wikipedia LBR i(file_format) ](https://en.wikipedia.org/wiki/LBR_%28file_format%29)
+[ Wikipedia LBR (file format) ](https://en.wikipedia.org/wiki/LBR_%28file_format%29)
