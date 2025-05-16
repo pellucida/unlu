@@ -1,7 +1,7 @@
 #
 # @(#) Makefile - unlu
 #
-CFLAGS	+= -g -I.
+CFLAGS	+= -g -I. # -DUSE_STRCMP
 LDFLAGS	+= -g
 
 OBJ	= errors.o unlu.o crc16.o

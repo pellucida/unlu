@@ -5,6 +5,9 @@
 # include	<stdlib.h>
 
 //
+// Table taken from Russell Marks lbrate-1.1 code GPL.
+// http://www.svgalib.org/rus/lbrate.html
+//
 // Can be computed from the polynomian X^16+X^12+X^5+1 (0x1021)
 //
 static const	uint16_t table [256] = {

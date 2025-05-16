@@ -8,13 +8,21 @@
 # include	<stdint.h>
 # include	<stdlib.h>
 # include	<string.h>
+# include	<stdbool.h>
 # include	<time.h>
+# if	!defined( USE_STRCMP)
+# include	<fnmatch.h>
+# endif
 # include	<errno.h>
 
 # include	"dostime.h"
 # include	"dirent.h"
 # include	"errors.h"
 # include	"crc16.h"
+
+// CP/M Text file EOF [Ctrl-Z] also honoured by MS-DOS(?)
+
+# define	ZEOF	('\x1a') 
 
 // time_t -> formatted string
 static	size_t	time_strftime (char* s, size_t max, char* format, time_t time){
@@ -116,11 +124,46 @@ typedef	struct	args_t	{
 	int	verbose;
 	char*	file;
 	char*	extract_dir;
+	char**	members;
+	size_t	nmembers;
 	size_t	n_dirent;
 	void*	mapped;
 }	args_t;
 
-int	directory_list (args_t args) {
+static	int	match (args_t args, char* name) {
+	int	result	= false;
+	size_t	i	= 0;
+	size_t	j	= args.nmembers;
+	char**	pats	= args.members;
+	while (i!=j) {
+# if	!defined( USE_STRCMP)
+		// No FNM_ flags required here.
+		if (fnmatch (pats[i], name, 0)==0) {
+# else
+		if (strcmp (pats[i], name)==0) {
+# endif
+			result	= true;
+			j	= i;
+		}
+		else	++i;
+	}
+	return	result;
+}
+
+static	void	do_list (args_t args, namerec_t dirent) {
+	if (args.verbose) {
+		char	timestamp [sizeof("1977-12-32_23:59:59")+1];
+		time_strftime (timestamp, sizeof(timestamp), "%Y-%m-%d_%H:%M:%S", dirent.ctime);
+		fprintf (stdout, "%c", dirent.attribute);
+		fprintf (stdout, " %s ", timestamp);
+
+		fprintf (stdout, "% 8lu", dirent.size);
+	}
+	fprintf (stdout, "\t%-14.14s", dirent.name);
+	fprintf (stdout, "\n");
+}	
+
+static	int	directory_list (args_t args) {
 	int	result	= ok;
 	ludirent_t*	dir	= args.mapped; //args.dir;
 	size_t	i	= 0;
@@ -134,17 +177,9 @@ int	directory_list (args_t args) {
 					lude.name, lude.ext);
 			}
 			else	{
-				if (args.verbose) {
-					char	timestamp [sizeof("1977-12-32_23:59:59")+1];
-					time_strftime (timestamp, sizeof(timestamp), "%Y-%m-%d_%H:%M:%S", dirent.ctime);
-					printf ("%c", dirent.attribute);
-					printf (" %s ", timestamp);
-					
-					printf ("% 8lu", dirent.size);
-					// printf ("[%4x]", dirent.crc);
+				if (args.members==0 || match (args, dirent.name)) {
+					do_list (args, dirent);
 				}
-				printf ("\t%-14.14s", dirent.name);
-				printf ("\n");
 			}
 			++i;
 		}
@@ -152,93 +187,130 @@ int	directory_list (args_t args) {
 	}
 	return	result;
 }
-int	directory_test (args_t args) {
+static	void	do_crc_check (args_t args, ludirent_t lude, namerec_t dirent) {
+	char*	mapped	= args.mapped;
+	size_t	begin	= dirent.offset;
+
+	uint16_t	crc	= crc16 (mapped+begin,lude.sectors_used*SECTOR);
+		
+	if (crc != dirent.crc) {
+		fprintf (stdout, "%-4.4s", "XX");
+	}
+	else	{
+		fprintf (stdout, "%-4.4s", "OK");
+	}
+	if (args.verbose) {
+		fprintf (stdout, "[%-04.4X/%-4.4x]", dirent.crc, crc);
+		char	timestamp [sizeof("1977-12-32_23:59:59")+1];
+		time_strftime (timestamp, sizeof(timestamp), "%Y-%m-%d_%H:%M:%S", dirent.ctime);
+		fprintf (stdout, " %s ", timestamp);
+		fprintf (stdout, "% 8lu  ", dirent.size);
+	}
+	fprintf (stdout,"%-16.16s", dirent.name);
+	fprintf (stdout,"\n");
+}
+
+
+static	int	directory_test (args_t args) {
 	int	result	= ok;
 	ludirent_t*	dir	= args.mapped; //args.dir;
+
 	size_t	i	= 1;	// skip '.'
 	size_t	finish	= args.n_dirent;
 	while (i != finish) {
-		char*	mapped	= args.mapped;
 		ludirent_t	lude	= dir [i];
 		if (lude.status != ST_UNUSED) {
 			namerec_t	dirent;
-			int	rv	= convert (&dirent, lude);
-			size_t	begin	= dirent.offset;
-			uint16_t	crc	= crc16 (mapped+begin,lude.sectors_used*SECTOR);
-			fprintf (stdout,"%-16.16s", dirent.name);
-			if (crc != dirent.crc) {
-				fprintf (stdout, "\tchecksum differs.");
+			if (convert (&dirent, lude) != ok) {
+				error ("[%s] couldn't convert lu archive member name ('%-8.8s'(.)'%-3.3s').\n",__FUNCTION__,
+					lude.name, lude.ext);
 			}
-			else	{
-				fprintf (stdout, "\tok.");
+			else if (args.members==0 || match (args, dirent.name)) {
+				do_crc_check (args, lude, dirent);
 			}
-			fprintf (stdout,"\n");
 			i++;
 		}
 		else	finish	= i;
 	}
 	return	result;
 }
-int	directory_extract (args_t args) {
+static	void	do_extract (args_t args, ludirent_t lude, namerec_t dirent) {
+
+	char*	mapped	= args.mapped;
+	size_t	begin	= dirent.offset;
+	size_t	size	= dirent.size;
+	size_t	j	= 0;
+	size_t	nonprint	= 0;
+	FILE*	output	= fopen (dirent.name, "w");
+	if (output) {
+		for (j=0; j < size-2; ++j){
+			int	ch	= mapped[begin+j];
+			if (isprint(ch) || isspace(ch)) {
+				;
+			}
+			else	{
+				++nonprint;
+			}
+			fputc (ch, output);
+		}
+		/* I noticed in my example lbr files the file length included two final ^Z
+		   which isn't very useful on *ix. But left \r\n alone as most Linux code
+		   accomodates those or can be easily postprocessed.
+		*/
+		if (nonprint > 2) { // non text heuristic
+			fputc (mapped [begin+size-2], output);
+			fputc (mapped [begin+size-1], output);
+		}
+		else	{	// Text file: omit the trailing ^Z
+			int	ch	= mapped [begin+size-2];
+			if (ch != ZEOF) {
+				fputc (ch, output);
+				ch	= mapped [begin+size-1];
+				if (ch != ZEOF) {
+					fputc (ch, output);
+				}
+			}
+		}
+		fclose (output);
+
+		if (args.verbose) {
+			char	timestamp [sizeof("1977-12-32_23:59:59")+1];
+			uint16_t	crc	= crc16 (mapped+begin,lude.sectors_used*SECTOR);
+			if (crc != dirent.crc) {
+				fprintf (stdout, "[%-4.4s]", "XX");
+			}
+			else	{
+				fprintf (stdout, "[%-4.4s]", "OK");
+			}
+			fprintf (stdout, "[%-04.4X/%-4.4x]", dirent.crc, crc);
+			time_strftime (timestamp, sizeof(timestamp), "%Y-%m-%d_%H:%M:%S", dirent.ctime);
+			fprintf (stdout, " %s ", timestamp);
+				fprintf (stdout, "% 8lu  ", dirent.size);
+		}
+		fprintf (stdout,"%-16.16s", dirent.name);
+		fprintf (stdout,"\n");
+	}
+	else	{
+		error ("[%s] couldn't open file '%s' in directory '%s' (%s)\n",__FUNCTION__,
+			dirent.name, args.extract_dir, strerror (errno));
+	}
+}
+
+static	int	directory_extract (args_t args) {
 	int	result	= ok;
 	ludirent_t*	dir	= args.mapped; //args.dir;
 	size_t	i	= 1;	// skip '.'
 	size_t	finish	= args.n_dirent;
 	while (i != finish) {
-		char*	mapped	= args.mapped;
 		ludirent_t	lude	= dir [i];
 		if (lude.status != ST_UNUSED) {
 			namerec_t	dirent;
-			int	rv	= convert (&dirent, lude);
-			if (rv==ok) {
-				size_t	begin	= dirent.offset;
-				size_t	size	= dirent.size;
-				size_t	j	= 0;
-				size_t	nonprint	= 0;
-				FILE*	output	= fopen (dirent.name, "w");
-				if (output) {
-					for (j=0; j < size-2; ++j){
-						int	ch	= mapped[begin+j];
-						if (isprint(ch) || isspace(ch)) {
-							;
-						}
-						else	{
-							++nonprint;
-						}
-						fputc (ch, output);
-					}
-					if (nonprint > 2) { // non text heuristic
-						fputc (mapped [begin+size-2], output);
-						fputc (mapped [begin+size-1], output);
-					}
-					else	{
-						int	ch	= mapped [begin+size-2];
-						if (ch != '\x1a') {
-							fputc (ch, output);
-							ch	= mapped [begin+size-1];
-							if (ch!='\x1a') {
-								fputc (ch, output);
-							}
-						}
-					}
-					fclose (output);
-					if (args.verbose) {
-						uint16_t	crc	= crc16 (mapped+begin,lude.sectors_used*SECTOR);
-						fprintf (stdout,"%s", dirent.name);
-						if (crc != dirent.crc) {
-							fprintf (stdout, "\tchecksum differs.");
-						}
-						fprintf (stdout,"\n");
-					}
-				}
-				else	{
-					error ("[%s] couldn't open file '%s' in directory '%s' (%s)\n",__FUNCTION__,
-						dirent.name, args.extract_dir, strerror (errno));
-				}
-			}
-			else	{
+			if (convert (&dirent, lude) != ok) {
 				error ("[%s] couldn't convert lu archive member name ('%-8.8s'(.)'%-3.3s').\n",__FUNCTION__,
 					lude.name, lude.ext);
+			}
+			else if (args.members==0 || match (args, dirent.name)) {
+				do_extract (args, lude, dirent);
 			}
 			i++;
 		}
@@ -247,7 +319,7 @@ int	directory_extract (args_t args) {
 	return	result;
 }
 
-int	process (FILE* input, args_t args) {
+static	int	process (FILE* input, args_t args) {
 	struct	ludirent_t	master;
 	size_t	nread	= fread (&master, sizeof(master), 1, input);
 	if (nread == 1) {
@@ -391,6 +463,14 @@ int	main (int argc, char* argv[]) {
 	if ((t_flag|l_flag|x_flag)==0) {
 		Usage ();
 	}
+	if (optind < argc) {
+		args.members	= &argv [optind];
+	}
+	else	{
+		args.members	= 0;
+	}
+	args.nmembers	= argc - optind;
+	
 	if (f_flag) {
 		FILE*	input	= fopen (args.file, "rb");
 		if (input != 0) {
