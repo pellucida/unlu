@@ -15,11 +15,14 @@ The archive members (*files*) to which the operation will be restricted may be (
 
 ## Examples
 ```` C
-	unlu -C /tmp/working -x -v -f src1.lbr	# extract all into /tmp/working
-	
-	unlu -l -v -f src1.lbr '[a-h]*.?'	# list file matching the glob pattern NB quoting
+	# extract all members from src1.lbr into /tmp/working
+	unlu -C /tmp/working -x -v -f src1.lbr
 
-	unlu -t v -f progs.lbr '*.com' '*.exe'	# test the CRC16 checksum of com and exe file in progs
+	# list file matching the glob pattern NB quoting
+	unlu -l -v -f src1.lbr '[a-h]*.?'
+
+	# test the CRC16 checksum of com and exe files in progs.lbr
+	unlu -t v -f progs.lbr '*.com' '*.exe'
 ````
 
 ## Notes
