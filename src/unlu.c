@@ -36,7 +36,9 @@ static	size_t	time_strftime (char* s, size_t max, char* format, time_t time){
 	return	result;
 }
 
-// Convert lu entries into more posixy form viz 
+// Convert lu entries into more posixy form  
+// map to lower case.
+// CP/M and DOS have fairly limited file names
 
 typedef	struct	namerec_t	{
 	size_t	offset;
@@ -49,6 +51,7 @@ typedef	struct	namerec_t	{
 }	namerec_t;
 
 // Convert the 8+3 names in separated blank terminated format.
+
 static	int	convert_name (char* name, size_t namesize, ludirent_t de) {
 	int	result	= err;
 	char*	s	= de.name;
@@ -103,6 +106,7 @@ static	int	convert (namerec_t* d, ludirent_t de) {
 }
 
 // Active, name & ext all blanks, offset is 0 and used is directory size
+
 static	int	verify_directory_control (ludirent_t dce) {
 	int	result	= err;
 	if (dce.status==ST_ACTIVE) {
@@ -194,10 +198,10 @@ static	void	do_crc_check (args_t args, ludirent_t lude, namerec_t dirent) {
 	uint16_t	crc	= crc16 (mapped+begin,lude.sectors_used*SECTOR);
 		
 	if (crc != dirent.crc) {
-		fprintf (stdout, "%-4.4s", "XX");
+		fprintf (stdout, "[%-2.2s]  ", "XX");
 	}
 	else	{
-		fprintf (stdout, "%-4.4s", "OK");
+		fprintf (stdout, "[%-2.2s]  ", "OK");
 	}
 	if (args.verbose) {
 		fprintf (stdout, "[%-04.4X/%-4.4x]", dirent.crc, crc);
@@ -274,21 +278,11 @@ static	void	do_extract (args_t args, ludirent_t lude, namerec_t dirent) {
 		fclose (output);
 
 		if (args.verbose) {
-			char	timestamp [sizeof("1977-12-32_23:59:59")+1];
-			uint16_t	crc	= crc16 (mapped+begin,lude.sectors_used*SECTOR);
-			if (crc != dirent.crc) {
-				fprintf (stdout, "[%-4.4s]", "XX");
-			}
-			else	{
-				fprintf (stdout, "[%-4.4s]", "OK");
-			}
-			fprintf (stdout, "[%-04.4X/%-4.4x]", dirent.crc, crc);
-			time_strftime (timestamp, sizeof(timestamp), "%Y-%m-%d_%H:%M:%S", dirent.ctime);
-			fprintf (stdout, " %s ", timestamp);
-				fprintf (stdout, "% 8lu  ", dirent.size);
+			do_crc_check (args, lude, dirent);
 		}
-		fprintf (stdout,"%-16.16s", dirent.name);
-		fprintf (stdout,"\n");
+		else	{
+			fprintf (stdout,"%-16.16s\n", dirent.name);
+		}
 	}
 	else	{
 		error ("[%s] couldn't open file '%s' in directory '%s' (%s)\n",__FUNCTION__,
