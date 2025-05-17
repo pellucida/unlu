@@ -161,9 +161,9 @@ static	void	do_list (args_t args, namerec_t dirent) {
 		fprintf (stdout, "%c", dirent.attribute);
 		fprintf (stdout, " %s ", timestamp);
 
-		fprintf (stdout, "% 8lu", dirent.size);
+		fprintf (stdout, "% 8lu  ", dirent.size);
 	}
-	fprintf (stdout, "\t%-14.14s", dirent.name);
+	fprintf (stdout, "%-14.14s", dirent.name);
 	fprintf (stdout, "\n");
 }	
 

@@ -1,0 +1,94 @@
+.TH unlu "1" "May 2025" "Archive Utility" "User Commands"
+.SH NAME
+unlu \- extract ancient CP/M and MS-DOS lbr archives.
+.SH SYNOPSIS
+.B unlu
+[\fB-C]\fR \fIworkdir\fR] [\fB-l|-t|-x\fR] [\fB-v\fR] [\fB-f\fR \fIarchive\fR] [\fImembers ...\fR]
+.SH DESCRIPTION
+.PP
+List, test or extract the specified members from the lbr archive.
+.TP
+\fB\-l\fR list contents of archive
+.TP
+\fB\-t\fR test contents of archive [crc16]
+.TP
+\fB\-x\fR extract contents of archive
+.TP
+\fB\-C\fR \fIworkdir\fR change directory to workdir before extracting
+.TP
+\fB\-v\fR verbose output
+
+.TP
+\fImembers\fR are \fBfnmatch\fR(3) patterns matched against the lower case archive members.
+.PP
+The default is to extract all members and the default archive is the standard input.
+
+.SH EXAMPLES
+.TP
+\fBunlu\fR \fB\-C\fR \fI/tmp/oldstuff\fR \fB-xv\fB \fB-f\fR \fIsrc.lbr\fR # extract src.lbr into /tmp/oldstuff
+
+.br
+.nf
+# crc [OK] [got/expected] creation date   bytes file name
+
+[OK]  [9455/9455] 1986-06-04_11:14:24     8192  .               
+[OK]  [63E2/63e2] 1986-05-19_05:06:54     2597  filter.c        
+[OK]  [60CF/60cf] 1986-05-19_05:06:56     5267  io.c            
+[OK]  [25A4/25a4] 1986-05-19_05:07:00     4632  kerdata.c       
+.br
+.fi
+.TP
+\fBunlu\fR \fB\-C\fR \fI/tmp/oldstuff\fR \fB-x\fB \fB-f\fR \fIsrc.lbr\fR # minus verbose switch
+.br
+.nf
+\fR.\fR               
+filter.c        
+io.c            
+kerdata.c  
+.br
+.fi
+.TP
+\fBunlu\fR \fB-l\fR \fB-f\fR \fIsrc.lbr\fR # list archive
+.br
+.nf
+\fR.\fR               
+filter.c        
+io.c            
+kerdata.c  
+.br
+.fi
+.TP
+\fBunlu\fR \fB-l\fR \fB-v\fR \fB-f\fR \fIsrc.lbr\fR # list archive verbose
+.br
+.nf
+a 1986-06-04_11:14:24     8192  .             
+a 1986-05-19_05:06:54     2597  filter.c      
+a 1986-05-19_05:06:56     5267  io.c          
+a 1986-05-19_05:07:00     4632  kerdata.c     
+.br
+.fi
+.TP
+\fBunlu\fR \fB-t\fR \fB-v\fR \fB-f\fR \fIsrc.lbr\fR # test archive verbose
+.br
+.nf
+[OK]  [63E2/63e2] 1986-05-19_05:06:54     2597  filter.c        
+[OK]  [60CF/60cf] 1986-05-19_05:06:56     5267  io.c            
+[OK]  [25A4/25a4] 1986-05-19_05:07:00     4632  kerdata.c       
+.br
+.fi
+.TP
+\fBunlu\fR \fB\-C\fR \fI/tmp/oldstuff\fR \fB-xv\fB \fB-f\fR \fIsrc.lbr\fR '[kf]*.c' # extract members matching pattern
+.br
+.nf
+[OK]  [63E2/63e2] 1986-05-19_05:06:54     2597  filter.c        
+[OK]  [25A4/25a4] 1986-05-19_05:07:00     4632  kerdata.c 
+.br
+.fi
+.SH BUGS
+Probably quite a few cases that LU allows that aren't handled.
+.SH See also
+\fBglob\fR(7), \fBfnmatch\fR(3).
+.br
+The lbr archive specification \fIftp://oak.oakland.edu/pub/cpm/arc-lbr/ludef5.doc\fR
+.br
+The Wikipedia LBR page \fIhttps://en.wikipedia.org/wiki/LBR_(file_format)\fR
