@@ -37,18 +37,4 @@ struct	ludirent_t	{
 
 typedef	struct	ludirent_t	ludirent_t;
 
-
-static	inline	int	__attribute__((const))	status_of (ludirent_t de) {
-	int	result	= 'D';
-	uint8_t	status	= de.status;
-
-	if (status==ST_ACTIVE)
-		result	= 'a';
-	else if (status==ST_UNUSED)
-		result	= 'u';
-	else if (status==ST_DELETED)
-		result	= 'd';
-	return	result;
-}
-
 #endif

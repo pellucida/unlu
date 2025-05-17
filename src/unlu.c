@@ -43,7 +43,6 @@ static	size_t	time_strftime (char* s, size_t max, char* format, time_t time){
 typedef	struct	namerec_t	{
 	size_t	offset;
 	size_t	size;
-	int	attribute;
 	char	name	[NAMEREC_LEN];
 	time_t	ctime;
 	time_t	mtime;
@@ -99,7 +98,6 @@ static	int	convert (namerec_t* d, ludirent_t de) {
 		dd.ctime	= dos_mktime (de.ctim_day, de.ctim_hms);
 		dd.mtime	= dos_mktime (de.mtim_day, de.mtim_hms);
 		dd.crc		= de.crc;
-		dd.attribute	= status_of (de);
 		*d	= dd;
 	}
 	return	rv;
@@ -158,8 +156,7 @@ static	void	do_list (args_t args, namerec_t dirent) {
 	if (args.verbose) {
 		char	timestamp [sizeof("1977-12-32_23:59:59")+1];
 		time_strftime (timestamp, sizeof(timestamp), "%Y-%m-%d_%H:%M:%S", dirent.ctime);
-		fprintf (stdout, "%c", dirent.attribute);
-		fprintf (stdout, " %s ", timestamp);
+		fprintf (stdout, "%s ", timestamp);
 
 		fprintf (stdout, "% 8lu  ", dirent.size);
 	}
@@ -175,7 +172,7 @@ static	int	directory_list (args_t args) {
 	while (i != finish) {
 		ludirent_t	lude	= dir [i];
 		int	status	= lude.status;
-		if (status == ST_ACTIVE||status == ST_DELETED) {
+		if (status == ST_ACTIVE) {
 			namerec_t	dirent;
 			if (convert (&dirent, lude) != ok) {
 				error ("[%s] couldn't convert lu archive member name ('%-8.8s'(.)'%-3.3s').\n",__FUNCTION__,
@@ -186,6 +183,10 @@ static	int	directory_list (args_t args) {
 					do_list (args, dirent);
 				}
 			}
+			++i;
+		}
+// ST_DELETED - ludef5.doc states none of the other fields are valid.
+		else if (status == ST_DELETED) {
 			++i;
 		}
 		else	finish	= i;
