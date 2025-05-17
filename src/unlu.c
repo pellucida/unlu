@@ -164,36 +164,6 @@ static	void	do_list (args_t args, namerec_t dirent) {
 	fprintf (stdout, "\n");
 }	
 
-static	int	directory_list (args_t args) {
-	int	result	= ok;
-	ludirent_t*	dir	= args.mapped; //args.dir;
-	size_t	i	= 0;
-	size_t	finish	= args.n_dirent;
-	while (i != finish) {
-		ludirent_t	lude	= dir [i];
-		int	status	= lude.status;
-		if (status == ST_ACTIVE) {
-			namerec_t	dirent;
-			if (convert (&dirent, lude) != ok) {
-				error ("[%s] couldn't convert lu archive member name ('%-8.8s'(.)'%-3.3s').\n",__FUNCTION__,
-					lude.name, lude.ext);
-			}
-			else	{
-				if (args.members==0 || match (args, dirent.name)) {
-					do_list (args, dirent);
-				}
-			}
-			++i;
-		}
-// ST_DELETED - ludef5.doc states none of the other fields are valid.
-		else if (status == ST_DELETED) {
-			++i;
-		}
-		else	finish	= i;
-	}
-	return	result;
-}
-
 // The first entry requires special casing for CRC calculation.
 // the dce.crc must be set to 0 before calculating the directory CRC
 // Make a copy of the directory sectors and set CRC=0 there
@@ -241,35 +211,6 @@ static	void	do_crc_check (args_t args, ludirent_t lude, namerec_t dirent) {
 	fprintf (stdout,"\n");
 }
 
-
-static	int	directory_test (args_t args) {
-	int	result	= ok;
-	ludirent_t*	dir	= args.mapped; //args.dir;
-
-	size_t	i	= 0;
-	size_t	finish	= args.n_dirent;
-		
-	while (i != finish) {
-		ludirent_t	lude	= dir [i];
-		int	status	= lude.status;
-		if (status == ST_ACTIVE) {
-			namerec_t	dirent;
-			if (convert (&dirent, lude) != ok) {
-				error ("[%s] couldn't convert lu archive member name ('%-8.8s'(.)'%-3.3s').\n",__FUNCTION__,
-					lude.name, lude.ext);
-			}
-			else if (args.members==0 || match (args, dirent.name)) {
-				do_crc_check (args, lude, dirent);
-			}
-			i++;
-		}
-		else if (status == ST_DELETED) {
-			++i;
-		}
-		else	finish	= i;
-	}
-	return	result;
-}
 static	void	do_extract (args_t args, ludirent_t lude, namerec_t dirent) {
 
 	char*	mapped	= args.mapped;
@@ -323,29 +264,48 @@ static	void	do_extract (args_t args, ludirent_t lude, namerec_t dirent) {
 	}
 }
 
-static	int	directory_extract (args_t args) {
+// Iterate over the directory apply args.cmd viz list, test, extract
+//
+static	int	apply_operation (args_t args) {
 	int	result	= ok;
 	ludirent_t*	dir	= args.mapped; //args.dir;
 	size_t	i	= 0;
 	size_t	finish	= args.n_dirent;
 	while (i != finish) {
 		ludirent_t	lude	= dir [i];
-		int	status	= lude.status;
+		uint8_t	status	= lude.status;
 		if (status == ST_ACTIVE) {
 			namerec_t	dirent;
 			if (convert (&dirent, lude) != ok) {
 				error ("[%s] couldn't convert lu archive member name ('%-8.8s'(.)'%-3.3s').\n",__FUNCTION__,
 					lude.name, lude.ext);
 			}
-			else if (args.members==0 || match (args, dirent.name)) {
-				do_extract (args, lude, dirent);
+			else	{
+				if (args.members==0 || match (args, dirent.name)) {
+					switch (args.cmd) {
+					case	'l':
+						do_list (args, dirent);
+					break;
+					case	't':
+						do_crc_check (args, lude, dirent);
+					break;
+					case	'x':
+						do_extract (args, lude, dirent);
+					break;
+					}
+				}
 			}
-			i++;
+			++i;
 		}
 		else if (status == ST_DELETED) {
-			i++;
+			++i;
 		}
-		else	finish	= i;
+		else	{
+			if (status != ST_UNUSED) {
+				error ("[%s] expected status UNUSED got '0x02x'\n",__FUNCTION__, status);
+			}
+			finish	= i;
+		}
 	}
 	return	result;
 }
@@ -385,7 +345,6 @@ static	int	process (FILE* input, args_t args) {
 				args.n_dirent	= n_dirent;
 				if (args.cmd == 'l') {
 					args.mapped	= dir;
-					directory_list (args);
 				}
 				else if (args.cmd == 'x' || args.cmd == 't') {
 					char*	slurp	= 0;
@@ -414,11 +373,8 @@ static	int	process (FILE* input, args_t args) {
 						fatal ("[%s] couldn't allocate %lu bytes for %s (%s}\n",__FUNCTION__,
 							(maxsector+maxsector_size)*SECTOR, args.file);
 					}
-					if (args.cmd=='x')
-						directory_extract (args);
-					else if (args.cmd=='t')
-						directory_test (args);
 				}
+				apply_operation (args);
 			}
 		}
 	}
@@ -430,7 +386,7 @@ static	int	process (FILE* input, args_t args) {
 
 char*	progname (char*);
 static	void	Usage () {
-	fprintf (stderr, "Usage: %s [-C dir] [-l|-x|-t][-v][-f file]\n", progname(0));
+	fprintf (stderr, "Usage: %s [-C dir] [-l|-x|-t][-v][-f archive] [files ...]\n", progname(0));
 	exit (EXIT_FAILURE);
 }
 
