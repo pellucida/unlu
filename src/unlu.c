@@ -191,11 +191,36 @@ static	int	directory_list (args_t args) {
 	}
 	return	result;
 }
+
+// The first entry requires special casing for CRC calculation.
+// the dce.crc must be set to 0 before calculating the directory CRC
+// Make a copy of the directory sectors and set CRC=0 there
+
+static	inline	int	is_dce (ludirent_t lude){
+	return	lude.first_sector==0;
+}
+static	uint16_t	directory_calc_crc (args_t args) {
+	uint16_t	result	= 0;
+	ludirent_t*	dir	= args.mapped;
+	ludirent_t	dce	= dir[0];
+	size_t		used	= dce.sectors_used*SECTOR;
+	size_t		nents	= used/sizeof (ludirent_t);
+	ludirent_t	copy [nents];
+	memcpy (copy, dir, used);
+	copy[0].crc	= 0;
+	result	= crc16 (copy, used);
+	return	result;
+}
 static	void	do_crc_check (args_t args, ludirent_t lude, namerec_t dirent) {
 	char*	mapped	= args.mapped;
 	size_t	begin	= dirent.offset;
-
-	uint16_t	crc	= crc16 (mapped+begin,lude.sectors_used*SECTOR);
+	uint16_t	crc	= 0;
+	if (is_dce (lude)) {
+		crc	= directory_calc_crc (args);
+	}
+	else	{
+		crc	= crc16 (mapped+begin,lude.sectors_used*SECTOR);
+	}
 		
 	if (crc != dirent.crc) {
 		fprintf (stdout, "[%-2.2s]  ", "XX");
@@ -219,8 +244,9 @@ static	int	directory_test (args_t args) {
 	int	result	= ok;
 	ludirent_t*	dir	= args.mapped; //args.dir;
 
-	size_t	i	= 1;	// skip '.'
+	size_t	i	= 0;
 	size_t	finish	= args.n_dirent;
+		
 	while (i != finish) {
 		ludirent_t	lude	= dir [i];
 		if (lude.status != ST_UNUSED) {
@@ -245,55 +271,56 @@ static	void	do_extract (args_t args, ludirent_t lude, namerec_t dirent) {
 	size_t	size	= dirent.size;
 	size_t	j	= 0;
 	size_t	nonprint	= 0;
-	FILE*	output	= fopen (dirent.name, "w");
-	if (output) {
-		for (j=0; j < size-2; ++j){
-			int	ch	= mapped[begin+j];
-			if (isprint(ch) || isspace(ch)) {
-				;
+	if (!is_dce (lude)) {
+		FILE*	output	= fopen (dirent.name, "w");
+		if (output) {
+			for (j=0; j < size-2; ++j){
+				int	ch	= mapped[begin+j];
+				if (isprint(ch) || isspace(ch)) {
+					;
+				}
+				else	{
+					++nonprint;
+				}
+				fputc (ch, output);
 			}
-			else	{
-				++nonprint;
-			}
-			fputc (ch, output);
-		}
 		/* I noticed in my example lbr files the file length included two final ^Z
 		   which isn't very useful on *ix. But left \r\n alone as most Linux code
 		   accomodates those or can be easily postprocessed.
 		*/
-		if (nonprint > 2) { // non text heuristic
-			fputc (mapped [begin+size-2], output);
-			fputc (mapped [begin+size-1], output);
-		}
-		else	{	// Text file: omit the trailing ^Z
-			int	ch	= mapped [begin+size-2];
-			if (ch != ZEOF) {
-				fputc (ch, output);
-				ch	= mapped [begin+size-1];
+			if (nonprint > 2) { // non text heuristic
+				fputc (mapped [begin+size-2], output);
+				fputc (mapped [begin+size-1], output);
+			}
+			else	{	// Text file: omit the trailing ^Z
+				int	ch	= mapped [begin+size-2];
 				if (ch != ZEOF) {
 					fputc (ch, output);
+					ch	= mapped [begin+size-1];
+					if (ch != ZEOF) {
+						fputc (ch, output);
+					}
 				}
 			}
-		}
-		fclose (output);
-
-		if (args.verbose) {
-			do_crc_check (args, lude, dirent);
+			fclose (output);
 		}
 		else	{
-			fprintf (stdout,"%-16.16s\n", dirent.name);
+			error ("[%s] couldn't open file '%s' in directory '%s' (%s)\n",__FUNCTION__,
+				dirent.name, args.extract_dir, strerror (errno));
 		}
 	}
+	if (args.verbose) {
+		do_crc_check (args, lude, dirent);
+	}
 	else	{
-		error ("[%s] couldn't open file '%s' in directory '%s' (%s)\n",__FUNCTION__,
-			dirent.name, args.extract_dir, strerror (errno));
+		fprintf (stdout,"%-16.16s\n", dirent.name);
 	}
 }
 
 static	int	directory_extract (args_t args) {
 	int	result	= ok;
 	ludirent_t*	dir	= args.mapped; //args.dir;
-	size_t	i	= 1;	// skip '.'
+	size_t	i	= 0;
 	size_t	finish	= args.n_dirent;
 	while (i != finish) {
 		ludirent_t	lude	= dir [i];
