@@ -174,7 +174,8 @@ static	int	directory_list (args_t args) {
 	size_t	finish	= args.n_dirent;
 	while (i != finish) {
 		ludirent_t	lude	= dir [i];
-		if (lude.status != ST_UNUSED) {
+		int	status	= lude.status;
+		if (status == ST_ACTIVE||status == ST_DELETED) {
 			namerec_t	dirent;
 			if (convert (&dirent, lude) != ok) {
 				error ("[%s] couldn't convert lu archive member name ('%-8.8s'(.)'%-3.3s').\n",__FUNCTION__,
@@ -249,7 +250,8 @@ static	int	directory_test (args_t args) {
 		
 	while (i != finish) {
 		ludirent_t	lude	= dir [i];
-		if (lude.status != ST_UNUSED) {
+		int	status	= lude.status;
+		if (status == ST_ACTIVE) {
 			namerec_t	dirent;
 			if (convert (&dirent, lude) != ok) {
 				error ("[%s] couldn't convert lu archive member name ('%-8.8s'(.)'%-3.3s').\n",__FUNCTION__,
@@ -259,6 +261,9 @@ static	int	directory_test (args_t args) {
 				do_crc_check (args, lude, dirent);
 			}
 			i++;
+		}
+		else if (status == ST_DELETED) {
+			++i;
 		}
 		else	finish	= i;
 	}
@@ -324,7 +329,8 @@ static	int	directory_extract (args_t args) {
 	size_t	finish	= args.n_dirent;
 	while (i != finish) {
 		ludirent_t	lude	= dir [i];
-		if (lude.status != ST_UNUSED) {
+		int	status	= lude.status;
+		if (status == ST_ACTIVE) {
 			namerec_t	dirent;
 			if (convert (&dirent, lude) != ok) {
 				error ("[%s] couldn't convert lu archive member name ('%-8.8s'(.)'%-3.3s').\n",__FUNCTION__,
@@ -333,6 +339,9 @@ static	int	directory_extract (args_t args) {
 			else if (args.members==0 || match (args, dirent.name)) {
 				do_extract (args, lude, dirent);
 			}
+			i++;
+		}
+		else if (status == ST_DELETED) {
 			i++;
 		}
 		else	finish	= i;
